@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ComplianceCatalyst - FTC & FDA Regulation Mapping</title>
+  <meta name="description" content="Map your compliance policies to FTC and FDA regulations, then optimize with behavioral design principles.">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      min-height: 100vh;
+    }
+    ::selection { background: #818cf8; color: white; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState } = React;
+
+    const REGULATIONS = {
+      ftc: [
+        { id: "safeguards", name: "Safeguards Rule", cfr: "16 CFR Part 314", url: "https://www.ftc.gov/business-guidance/resources/ftc-safeguards-rule-what-your-business-needs-know" },
+        { id: "glba", name: "Gramm-Leach-Bliley Act", cfr: "15 U.S.C. § 6801", url: "https://www.ftc.gov/business-guidance/privacy-security/gramm-leach-bliley-act" },
+        { id: "coppa", name: "COPPA", cfr: "16 CFR Part 312", url: "https://www.ftc.gov/legal-library/browse/rules/childrens-online-privacy-protection-rule-coppa" },
+        { id: "endorsements", name: "Endorsement Guides", cfr: "16 CFR Part 255", url: "https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides-what-people-are-asking" },
+        { id: "fees", name: "Unfair Fees Rule", cfr: "16 CFR Part 464", url: "https://www.ftc.gov/business-guidance/resources/rule-unfair-or-deceptive-fees" },
+        { id: "negative", name: "Negative Option Rule", cfr: "16 CFR Part 425", url: "https://www.ftc.gov/business-guidance/resources/negative-option-rule" }
+      ],
+      fda: [
+        { id: "nutrition", name: "Nutrition Labeling", cfr: "21 CFR 101", url: "https://www.fda.gov/regulatory-information/search-fda-guidance-documents/guidance-industry-food-labeling-guide" },
+        { id: "allergens", name: "Allergen Labeling", cfr: "21 CFR 101.17", url: "https://www.fda.gov/food/food-labeling-nutrition/food-allergies" },
+        { id: "claims", name: "Health Claims", cfr: "21 CFR 101.14", url: "https://www.fda.gov/food/food-labeling-nutrition/label-claims-conventional-foods-and-dietary-supplements" },
+        { id: "otc", name: "OTC Drug Labeling", cfr: "21 CFR 201", url: "https://www.fda.gov/drugs/drug-approvals-and-databases/drugsfda-glossary-terms" },
+        { id: "cosmetic", name: "Cosmetic Labeling", cfr: "21 CFR 701", url: "https://www.fda.gov/cosmetics/cosmetics-labeling-regulations/cosmetics-labeling-guide" }
+      ]
+    };
+
+    const PRINCIPLES = [
+      { id: "defaults", name: "Smart Defaults", desc: "Pre-select compliant options", example: "Your data is protected by default" },
+      { id: "social", name: "Social Proof", desc: "Show others are complying", example: "Join 94% of customers who..." },
+      { id: "loss", name: "Loss Framing", desc: "Frame non-compliance as loss", example: "Don't miss out on security features" },
+      { id: "simple", name: "Simplification", desc: "Reduce cognitive load", example: "3 simple steps to secure your account" },
+      { id: "timing", name: "Salience & Timing", desc: "Right info at right time", example: "Show choices at moment of action" },
+      { id: "commit", name: "Commitment", desc: "Small steps to big compliance", example: "You've protected email. Now secure phone." }
+    ];
+
+    // API helper - uses Netlify Functions path
+    const callAPI = async (policy, action = 'analyze', principles = [], customResources = '') => {
+      const response = await fetch('/.netlify/functions/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ policy, action, principles, customResources })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'API request failed');
+      }
+      
+      return response.json();
+    };
+
+    function ComplianceOptimizer() {
+      const [step, setStep] = useState(1);
+      const [policy, setPolicy] = useState('');
+      const [matchedRegs, setMatchedRegs] = useState([]);
+      const [selectedPrinciples, setSelectedPrinciples] = useState([]);
+      const [customResources, setCustomResources] = useState('');
+      const [results, setResults] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+
+      const analyzePolicy = async () => {
+        if (!policy.trim()) return;
+        setLoading(true);
+        setError(null);
+        
+        try {
+          const data = await callAPI(policy, 'analyze');
+          
+          if (data.parseError) {
+            throw new Error('Failed to parse API response');
+          }
+          
+          const allRegs = [...REGULATIONS.ftc, ...REGULATIONS.fda];
+          const matched = allRegs.filter(r => data.matches?.includes(r.id)).map(r => ({
+            ...r,
+            explanation: data.explanations?.[r.id] || "Relevant to policy content",
+            agency: REGULATIONS.ftc.find(x => x.id === r.id) ? 'FTC' : 'FDA'
+          }));
+          
+          setMatchedRegs(matched);
+          setStep(2);
+        } catch (err) {
+          console.error('Analysis error:', err);
+          setError(err.message || "Analysis failed. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const optimizeLanguage = async () => {
+        if (selectedPrinciples.length === 0) return;
+        setLoading(true);
+        setError(null);
+        
+        try {
+          const principleData = selectedPrinciples.map(id => PRINCIPLES.find(p => p.id === id));
+          const data = await callAPI(policy, 'optimize', principleData, customResources);
+          
+          if (data.parseError) {
+            throw new Error('Failed to parse API response');
+          }
+          
+          setResults(data.versions || []);
+          setStep(4);
+        } catch (err) {
+          console.error('Optimization error:', err);
+          setError(err.message || "Optimization failed. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const togglePrinciple = (id) => {
+        setSelectedPrinciples(prev => 
+          prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+        );
+      };
+
+      const copyToClipboard = (text) => {
+        navigator.clipboard.writeText(text);
+      };
+
+      const resetApp = () => {
+        setStep(1);
+        setPolicy('');
+        setMatchedRegs([]);
+        setSelectedPrinciples([]);
+        setResults([]);
+        setCustomResources('');
+        setError(null);
+      };
+
+      return (
+        <div style={{ minHeight: '100vh', padding: '2rem', maxWidth: '950px', margin: '0 auto' }}>
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+              <div style={{ 
+                width: '48px', height: '48px', 
+                background: 'linear-gradient(135deg, #6366f1, #06b6d4)', 
+                borderRadius: '12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 20px rgba(99, 102, 241, 0.3)'
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <h1 style={{ fontSize: '2rem', color: 'white', fontWeight: '300' }}>
+                Compliance<span style={{ fontWeight: '600', color: '#818cf8' }}>Catalyst</span>
+              </h1>
+            </div>
+            <p style={{ color: '#94a3b8', fontSize: '1.05rem' }}>
+              Map to FTC & FDA regulations, then optimize with behavioral design
+            </p>
+          </div>
+
+          {/* Progress Steps */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+            {['Input Policy', 'Map Regulations', 'Select Principles', 'Results'].map((label, i) => (
+              <React.Fragment key={label}>
+                <button
+                  onClick={() => i + 1 < step && setStep(i + 1)}
+                  disabled={i + 1 > step}
+                  style={{
+                    padding: '0.6rem 1.1rem',
+                    borderRadius: '0.5rem',
+                    border: step === i + 1 ? '2px solid #818cf8' : '1px solid #334155',
+                    background: step === i + 1 ? 'rgba(129, 140, 248, 0.2)' : step > i + 1 ? 'rgba(30, 41, 59, 0.8)' : 'rgba(30, 41, 59, 0.4)',
+                    color: step >= i + 1 ? 'white' : '#64748b',
+                    cursor: i + 1 <= step ? 'pointer' : 'default',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {label}
+                </button>
+                {i < 3 && <span style={{ color: step > i + 1 ? '#818cf8' : '#334155', alignSelf: 'center' }}>→</span>}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div style={{ 
+              padding: '1rem 1.25rem', 
+              background: 'rgba(239, 68, 68, 0.15)', 
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '0.75rem',
+              color: '#fca5a5',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem'
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              {error}
+            </div>
+          )}
+
+          {/* Step 1: Input Policy */}
+          {step === 1 && (
+            <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '1rem', padding: '2rem', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
+              <h2 style={{ color: 'white', marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: '500' }}>Enter Your Compliance Policy</h2>
+              <p style={{ color: '#94a3b8', marginBottom: '1.25rem', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                Paste your company's client-facing compliance text, terms of service, privacy policy, or product labels.
+              </p>
+              
+              <textarea
+                value={policy}
+                onChange={(e) => setPolicy(e.target.value)}
+                placeholder="Example: We collect personal information including name, email, and payment details. We may share your information with third-party partners for marketing purposes. By using our service, you agree to receive promotional emails..."
+                style={{
+                  width: '100%',
+                  height: '220px',
+                  padding: '1rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid #475569',
+                  background: '#0f172a',
+                  color: 'white',
+                  fontSize: '0.9rem',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                  lineHeight: '1.6',
+                  transition: 'border-color 0.2s'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#818cf8'}
+                onBlur={(e) => e.target.style.borderColor = '#475569'}
+              />
+              
+              <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{policy.length} characters</span>
+                <button
+                  onClick={analyzePolicy}
+                  disabled={!policy.trim() || loading}
+                  style={{
+                    padding: '0.85rem 1.75rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    background: !policy.trim() || loading ? '#475569' : 'linear-gradient(135deg, #6366f1, #06b6d4)',
+                    color: 'white',
+                    fontWeight: '500',
+                    cursor: !policy.trim() || loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    boxShadow: !policy.trim() || loading ? 'none' : '0 4px 15px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  {loading ? (
+                    <>
+                      <svg width="18" height="18" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70" />
+                      </svg>
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>Map to Regulations →</>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Examples */}
+              <div style={{ marginTop: '1.75rem', borderTop: '1px solid #334155', paddingTop: '1.25rem' }}>
+                <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '0.75rem', fontWeight: '500' }}>QUICK EXAMPLES</p>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '🔒 Privacy Policy', text: 'We collect and process your personal data including name, email, phone number, and browsing history. Your information may be shared with our marketing partners. We use cookies to track activity across our website. Users may opt-out by contacting support.' },
+                    { label: '🔄 Subscription Terms', text: 'By subscribing, you authorize automatic monthly charges to your payment method. Subscriptions auto-renew until cancelled. To cancel, visit account settings at least 48 hours before your renewal date. No refunds for partial billing periods.' },
+                    { label: '💊 Product Label', text: 'Dietary Supplement - Take 2 capsules daily with food. Contains: Vitamin D 1000IU, Calcium 500mg, Natural flavors. Warning: Consult a physician before use if pregnant or nursing. Not intended to diagnose, treat, cure, or prevent any disease. Contains milk and soy.' }
+                  ].map(ex => (
+                    <button
+                      key={ex.label}
+                      onClick={() => setPolicy(ex.text)}
+                      style={{
+                        padding: '0.6rem 1rem',
+                        borderRadius: '0.5rem',
+                        border: '1px solid #475569',
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        color: '#94a3b8',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Mapped Regulations */}
+          {step === 2 && (
+            <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '1rem', padding: '2rem', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 style={{ color: 'white', marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: '500' }}>Applicable Regulations</h2>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Found {matchedRegs.length} relevant federal regulations</p>
+                </div>
+                <button onClick={() => setStep(1)} style={{ color: '#818cf8', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  ← Edit Policy
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {matchedRegs.map(reg => (
+                  <div key={reg.id} style={{ padding: '1.25rem', background: '#0f172a', borderRadius: '0.75rem', border: '1px solid #334155' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                      <div>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '0.25rem',
+                          background: reg.agency === 'FTC' ? 'rgba(99, 102, 241, 0.25)' : 'rgba(6, 182, 212, 0.25)',
+                          color: reg.agency === 'FTC' ? '#a5b4fc' : '#67e8f9',
+                          fontSize: '0.7rem',
+                          fontWeight: '600',
+                          marginBottom: '0.5rem',
+                          letterSpacing: '0.05em'
+                        }}>
+                          {reg.agency}
+                        </span>
+                        <h3 style={{ color: 'white', margin: '0.25rem 0', fontSize: '1.05rem', fontWeight: '500' }}>{reg.name}</h3>
+                        <p style={{ color: '#64748b', fontSize: '0.8rem', margin: 0, fontFamily: 'monospace' }}>{reg.cfr}</p>
+                      </div>
+                      <a
+                        href={reg.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ 
+                          color: '#818cf8', 
+                          fontSize: '0.8rem', 
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}
+                      >
+                        View Official
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                        </svg>
+                      </a>
+                    </div>
+                    <p style={{ color: '#94a3b8', fontSize: '0.875rem', marginTop: '0.75rem', lineHeight: '1.5' }}>{reg.explanation}</p>
+                  </div>
+                ))}
+              </div>
+
+              {matchedRegs.length === 0 && (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                  No specific regulations identified. Try adding more detail to your policy text.
+                </div>
+              )}
+
+              <button
+                onClick={() => setStep(3)}
+                disabled={matchedRegs.length === 0}
+                style={{
+                  marginTop: '1.5rem',
+                  width: '100%',
+                  padding: '0.9rem',
+                  borderRadius: '0.5rem',
+                  border: 'none',
+                  background: matchedRegs.length === 0 ? '#475569' : 'linear-gradient(135deg, #6366f1, #06b6d4)',
+                  color: 'white',
+                  fontWeight: '500',
+                  cursor: matchedRegs.length === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.95rem',
+                  boxShadow: matchedRegs.length === 0 ? 'none' : '0 4px 15px rgba(99, 102, 241, 0.3)'
+                }}
+              >
+                Select Behavioral Principles →
+              </button>
+            </div>
+          )}
+
+          {/* Step 3: Behavioral Principles */}
+          {step === 3 && (
+            <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '1rem', padding: '2rem', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 style={{ color: 'white', marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: '500' }}>Behavioral Design Principles</h2>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>Select principles to apply ({selectedPrinciples.length} selected)</p>
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.75rem' }}>
+                {PRINCIPLES.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => togglePrinciple(p.id)}
+                    style={{
+                      padding: '1.25rem',
+                      borderRadius: '0.75rem',
+                      border: selectedPrinciples.includes(p.id) ? '2px solid #818cf8' : '1px solid #334155',
+                      background: selectedPrinciples.includes(p.id) ? 'rgba(129, 140, 248, 0.15)' : '#0f172a',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ color: 'white', margin: 0, fontSize: '1rem', fontWeight: '500' }}>{p.name}</h3>
+                      {selectedPrinciples.includes(p.id) && (
+                        <span style={{ color: '#818cf8', fontSize: '1.25rem' }}>✓</span>
+                      )}
+                    </div>
+                    <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0.5rem 0' }}>{p.desc}</p>
+                    <p style={{ color: '#64748b', fontSize: '0.8rem', fontStyle: 'italic' }}>"{p.example}"</p>
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Resources */}
+              <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid #334155' }}>
+                <h3 style={{ color: 'white', fontSize: '1rem', marginBottom: '0.5rem', fontWeight: '500' }}>
+                  Additional Behavioral Design Resources
+                  <span style={{ color: '#64748b', fontWeight: '400', fontSize: '0.85rem' }}> (Optional)</span>
+                </h3>
+                <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                  Paste any additional guidelines, research, or best practices you'd like applied.
+                </p>
+                <textarea
+                  value={customResources}
+                  onChange={(e) => setCustomResources(e.target.value)}
+                  placeholder="Paste behavioral design resources, internal guidelines, or specific instructions here..."
+                  style={{
+                    width: '100%',
+                    height: '100px',
+                    padding: '1rem',
+                    borderRadius: '0.75rem',
+                    border: '1px solid #475569',
+                    background: '#0f172a',
+                    color: 'white',
+                    fontSize: '0.9rem',
+                    resize: 'vertical',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  onClick={() => setStep(2)}
+                  style={{
+                    padding: '0.85rem 1.5rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #475569',
+                    background: 'transparent',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem'
+                  }}
+                >
+                  ← Back
+                </button>
+                <button
+                  onClick={optimizeLanguage}
+                  disabled={selectedPrinciples.length === 0 || loading}
+                  style={{
+                    flex: 1,
+                    padding: '0.85rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    background: selectedPrinciples.length === 0 || loading ? '#475569' : 'linear-gradient(135deg, #6366f1, #06b6d4)',
+                    color: 'white',
+                    fontWeight: '500',
+                    cursor: selectedPrinciples.length === 0 || loading ? 'not-allowed' : 'pointer',
+                    fontSize: '0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    boxShadow: selectedPrinciples.length === 0 || loading ? 'none' : '0 4px 15px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  {loading ? (
+                    <>
+                      <svg width="18" height="18" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite' }}>
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="30 70" />
+                      </svg>
+                      Optimizing...
+                    </>
+                  ) : (
+                    <>Generate Optimized Language →</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Results */}
+          {step === 4 && (
+            <div style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '1rem', padding: '2rem', border: '1px solid #334155', backdropFilter: 'blur(10px)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
+                <div>
+                  <h2 style={{ color: 'white', marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: '500' }}>Optimized Compliance Language</h2>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{results.length} segments optimized for customer engagement</p>
+                </div>
+                <button onClick={() => setStep(3)} style={{ color: '#818cf8', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.85rem' }}>
+                  ← Adjust Principles
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {results.map((r, i) => (
+                  <div key={i} style={{ padding: '1.5rem', background: '#0f172a', borderRadius: '0.75rem', border: '1px solid #334155' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444' }}></span>
+                          <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '600', letterSpacing: '0.05em' }}>ORIGINAL</span>
+                        </div>
+                        <div style={{ padding: '1rem', background: 'rgba(15, 23, 42, 0.8)', borderRadius: '0.5rem', border: '1px solid #334155' }}>
+                          <p style={{ color: '#94a3b8', fontSize: '0.9rem', margin: 0, lineHeight: 1.6 }}>{r.original}</p>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }}></span>
+                            <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: '600', letterSpacing: '0.05em' }}>OPTIMIZED</span>
+                          </div>
+                          <button
+                            onClick={() => copyToClipboard(r.optimized)}
+                            style={{
+                              padding: '0.35rem 0.75rem',
+                              borderRadius: '0.25rem',
+                              border: '1px solid #475569',
+                              background: 'transparent',
+                              color: '#64748b',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.35rem'
+                            }}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                        <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '0.5rem', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                          <p style={{ color: 'white', fontSize: '0.9rem', margin: 0, lineHeight: 1.6 }}>{r.optimized}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #334155' }}>
+                      <p style={{ color: '#64748b', fontSize: '0.8rem', margin: 0 }}>
+                        <span style={{ color: '#94a3b8', fontWeight: '500' }}>Why: </span>
+                        {r.rationale}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Regulation References */}
+              <div style={{ marginTop: '1.75rem', padding: '1.25rem', background: '#0f172a', borderRadius: '0.75rem', border: '1px solid #334155' }}>
+                <h3 style={{ color: 'white', fontSize: '1rem', marginBottom: '1rem', fontWeight: '500' }}>Official Regulation References</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+                  {matchedRegs.map(reg => (
+                    <a
+                      key={reg.id}
+                      href={reg.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.75rem',
+                        background: 'rgba(30, 41, 59, 0.5)',
+                        borderRadius: '0.5rem',
+                        textDecoration: 'none',
+                        color: '#94a3b8',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <span style={{ color: reg.agency === 'FTC' ? '#818cf8' : '#22d3ee', fontWeight: '600' }}>{reg.agency}</span>
+                      {reg.name} →
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
+                <button
+                  onClick={resetApp}
+                  style={{
+                    padding: '0.85rem 1.5rem',
+                    borderRadius: '0.5rem',
+                    border: '1px solid #475569',
+                    background: 'transparent',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem'
+                  }}
+                >
+                  Start New Analysis
+                </button>
+                <button
+                  onClick={() => {
+                    const allText = results.map(r => r.optimized).join('\n\n');
+                    copyToClipboard(allText);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.85rem',
+                    borderRadius: '0.5rem',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
+                    color: 'white',
+                    fontWeight: '500',
+                    cursor: 'pointer',
+                    fontSize: '0.95rem',
+                    boxShadow: '0 4px 15px rgba(99, 102, 241, 0.3)'
+                  }}
+                >
+                  Copy All Optimized Text
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Footer */}
+          <p style={{ textAlign: 'center', color: '#475569', fontSize: '0.8rem', marginTop: '2.5rem' }}>
+            Links connect to official FTC.gov and FDA.gov resources. Always consult legal counsel for compliance decisions.
+          </p>
+        </div>
+      );
+    }
+
+    // Add spinner animation
+    const style = document.createElement('style');
+    style.textContent = `@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+    document.head.appendChild(style);
+
+    ReactDOM.render(<ComplianceOptimizer />, document.getElementById('root'));
+  </script>
+</body>
+</html>
